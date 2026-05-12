@@ -1,0 +1,27 @@
+# Copy this file to: /etc/systemd/system/nifty-agent.service
+# Then run:
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable nifty-agent
+#   sudo systemctl start nifty-agent
+#
+# Check status:  sudo systemctl status nifty-agent
+# View logs:     journalctl -u nifty-agent -f
+
+[Unit]
+Description=Nifty Iron Condor AI Agent
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/nifty-agent
+ExecStart=/bin/bash /home/ubuntu/nifty-agent/start.sh
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+Environment=PORT=8080
+
+[Install]
+WantedBy=multi-user.target

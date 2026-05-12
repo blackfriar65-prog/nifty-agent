@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nifty AI Agent — Live Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css">
+<style>
+:root {
+  --bg: #0d0f14;
+  --surface: #141720;
+  --surface2: #1a1e2a;
+  --border: rgba(255,255,255,0.07);
+  --border2: rgba(255,255,255,0.13);
+  --text: #e8eaf0;
+  --muted: #6b7280;
+  --green: #10b981;
+  --green-bg: rgba(16,185,129,0.12);
+  --red: #ef4444;
+  --red-bg: rgba(239,68,68,0.10);
+  --amber: #f59e0b;
+  --amber-bg: rgba(245,158,11,0.12);
+  --blue: #3b82f6;
+  --blue-bg: rgba(59,130,246,0.12);
+  --teal: #14b8a6;
+  --mono: 'JetBrains Mono', 'Fira Mono', 'Courier New', monospace;
+  --sans: 'Inter', system-ui, sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 13px; line-height: 1.5; }
+
+/* layout */
+.layout { display: grid; grid-template-rows: 52px 1fr; height: 100vh; }
+.topbar { display: flex; align-items: center; justify-content: space-between; padding: 0 20px; border-bottom: 1px solid var(--border); background: var(--surface); }
+.main { display: grid; grid-template-columns: 260px 1fr 280px; gap: 0; overflow: hidden; }
+.left   { border-right: 1px solid var(--border); overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.center { overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.right  { border-left: 1px solid var(--border); overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+
+/* topbar */
+.tb-logo { display: flex; align-items: center; gap: 10px; }
+.tb-dot  { width: 8px; height: 8px; border-radius: 50%; background: var(--green); animation: blink 1.6s infinite; }
+.tb-name { font-size: 14px; font-weight: 600; letter-spacing: 0.06em; color: var(--text); }
+.tb-pills { display: flex; gap: 6px; }
+.pill { font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 999px; letter-spacing: 0.05em; }
+.pill-paper  { background: var(--blue-bg); color: var(--blue); border: 1px solid var(--blue); }
+.pill-live   { background: var(--green-bg); color: var(--green); border: 1px solid var(--green); }
+.pill-warn   { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber); }
+.pill-stop   { background: var(--red-bg); color: var(--red); border: 1px solid var(--red); }
+.tb-right { display: flex; align-items: center; gap: 16px; }
+.clock { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.conn-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+
+/* cards */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+.card-title { font-size: 10px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+.card-title i { font-size: 13px; }
+
+/* metrics */
+.metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px,1fr)); gap: 8px; }
+.metric { background: var(--surface2); border-radius: 8px; padding: 10px 12px; }
+.metric-label { font-size: 10px; color: var(--muted); margin-bottom: 4px; letter-spacing: 0.04em; }
+.metric-val   { font-size: 20px; font-weight: 600; font-family: var(--mono); color: var(--text); }
+.metric-sub   { font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+/* verdict banner */
+.verdict { padding: 10px 14px; border-radius: 8px; font-size: 12px; font-weight: 500; border-left: 3px solid; }
+.verdict-go   { background: var(--green-bg); color: var(--green); border-color: var(--green); }
+.verdict-wait { background: var(--amber-bg); color: var(--amber); border-color: var(--amber); }
+.verdict-stop { background: var(--red-bg); color: var(--red); border-color: var(--red); }
+
+/* spread cards */
+.spread-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.spread { background: var(--surface2); border-radius: 8px; padding: 10px; border-top: 2px solid; }
+.spread-put  { border-top-color: var(--red); }
+.spread-call { border-top-color: var(--blue); }
+.spread-title { font-size: 11px; font-weight: 600; margin-bottom: 8px; }
+.spread-put  .spread-title { color: var(--red); }
+.spread-call .spread-title { color: var(--blue); }
+.kv { display: flex; justify-content: space-between; font-size: 11px; padding: 3px 0; border-bottom: 1px solid var(--border); }
+.kv:last-child { border-bottom: none; }
+.kv-k { color: var(--muted); }
+.kv-v { font-family: var(--mono); font-weight: 500; }
+
+/* pipeline */
+.pipeline { display: flex; align-items: center; gap: 0; }
+.pl-step { text-align: center; flex-shrink: 0; }
+.pl-icon { width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 4px; font-size: 11px; border: 1px solid var(--border2); color: var(--muted); background: var(--surface2); }
+.pl-icon.done   { border-color: var(--green); color: var(--green); background: var(--green-bg); }
+.pl-icon.active { border-color: var(--blue); color: var(--blue); background: var(--blue-bg); animation: blink 1.5s infinite; }
+.pl-label { font-size: 9px; color: var(--muted); white-space: nowrap; }
+.pl-line { flex: 1; height: 1px; background: var(--border2); min-width: 8px; }
+.pl-line.done { background: var(--green); }
+
+/* log */
+.log-wrap { background: var(--bg); border-radius: 8px; padding: 8px 10px; max-height: 260px; overflow-y: auto; font-family: var(--mono); font-size: 11px; }
+.log-entry { display: flex; gap: 8px; padding: 2px 0; border-bottom: 1px solid rgba(255,255,255,0.03); }
+.log-entry:last-child { border-bottom: none; }
+.log-t  { color: var(--muted); flex-shrink: 0; }
+.log-msg { color: #9ca3af; }
+.log-msg.ok   { color: var(--green); }
+.log-msg.warn { color: var(--amber); }
+.log-msg.exec { color: var(--teal); font-weight: 600; }
+.log-msg.info { color: var(--blue); }
+
+/* pnl */
+.pnl-big { font-size: 36px; font-weight: 700; font-family: var(--mono); text-align: center; padding: 10px 0; }
+.pnl-big.pos { color: var(--green); }
+.pnl-big.neg { color: var(--red); }
+
+/* vix bar */
+.vix-track { height: 10px; border-radius: 5px; background: linear-gradient(to right, #10b981 0%, #10b981 40%, #f59e0b 40%, #f59e0b 60%, #ef4444 60%); position: relative; margin: 8px 0; }
+.vix-marker { position: absolute; top: -3px; width: 4px; height: 16px; background: #fff; border-radius: 2px; transform: translateX(-50%); transition: left 1s ease; }
+
+/* agent subsystems */
+.subsystem { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: var(--surface2); border-radius: 6px; margin-bottom: 5px; }
+.ss-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.ss-dot.green { background: var(--green); animation: blink 2s infinite; }
+.ss-dot.amber { background: var(--amber); }
+.ss-dot.blue  { background: var(--blue); animation: blink 1.8s infinite; }
+.ss-dot.red   { background: var(--red); animation: blink 0.8s infinite; }
+.ss-label { font-size: 11px; font-weight: 500; flex: 1; }
+.ss-val   { font-size: 10px; color: var(--muted); font-family: var(--mono); text-align: right; }
+
+/* charts */
+.chart-wrap { position: relative; }
+
+/* payoff slider */
+.slider-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.slider-row label { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.slider-row input[type=range] { flex: 1; accent-color: var(--green); }
+.slider-row span { font-family: var(--mono); font-size: 12px; min-width: 64px; text-align: right; }
+
+/* animations */
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.25} }
+
+/* scrollbars */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+/* responsive fallback */
+@media (max-width: 900px) {
+  .main { grid-template-columns: 1fr; grid-template-rows: auto auto auto; }
+  .left, .right { border: none; border-bottom: 1px solid var(--border); }
+}
+
+.text-green { color: var(--green); }
+
+/* recalibrate button */
+.recal-btn {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 18px; border-radius: 8px; border: 1.5px solid var(--amber);
+  background: var(--amber-bg); color: var(--amber);
+  font-family: var(--mono); font-size: 12px; font-weight: 700;
+  letter-spacing: 0.07em; cursor: pointer; transition: all 0.15s;
+  width: 100%; justify-content: center;
+  position: sticky; bottom: 0;
+  box-shadow: 0 -8px 20px var(--bg);  /* fade behind content when scrolling */
+  margin-top: auto;                   /* push to bottom of flex column */
+  flex-shrink: 0;
+}
+.recal-btn:hover { background: rgba(245,158,11,0.22); border-color: #fbbf24; color: #fbbf24; }
+.recal-btn:active { transform: scale(0.97); }
+.recal-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+.recal-btn .recal-icon { font-size: 15px; }
+
+/* recal modal overlay */
+.recal-overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,0.72); z-index: 100;
+  align-items: center; justify-content: center;
+}
+.recal-overlay.open { display: flex; }
+.recal-modal {
+  background: var(--surface); border: 1px solid var(--amber);
+  border-radius: 14px; padding: 28px 28px 22px; max-width: 420px; width: 90%;
+}
+.recal-modal-title {
+  font-size: 15px; font-weight: 700; color: var(--amber);
+  letter-spacing: 0.06em; margin-bottom: 10px;
+  display: flex; align-items: center; gap: 8px;
+}
+.recal-modal-body {
+  font-size: 13px; color: #d1d5db; line-height: 1.7; margin-bottom: 18px;
+}
+.recal-modal-steps {
+  background: var(--bg); border-radius: 8px; padding: 12px 14px;
+  font-family: var(--mono); font-size: 11px; margin-bottom: 18px;
+}
+.recal-modal-step { padding: 3px 0; color: var(--muted); border-bottom: 1px solid rgba(255,255,255,0.04); }
+.recal-modal-step:last-child { border-bottom: none; }
+.recal-modal-step.active { color: var(--amber); font-weight: 600; }
+.recal-modal-step.done   { color: var(--green); }
+.recal-modal-btns { display: flex; gap: 10px; }
+.recal-confirm-btn {
+  flex: 1; padding: 10px; border-radius: 8px; border: 1.5px solid var(--amber);
+  background: var(--amber-bg); color: var(--amber);
+  font-family: var(--mono); font-size: 13px; font-weight: 700; cursor: pointer;
+}
+.recal-confirm-btn:hover { background: rgba(245,158,11,0.25); }
+.recal-cancel-btn {
+  flex: 1; padding: 10px; border-radius: 8px; border: 1px solid var(--border2);
+  background: none; color: var(--muted);
+  font-family: var(--mono); font-size: 13px; cursor: pointer;
+}
+.recal-cancel-btn:hover { color: var(--text); border-color: var(--text); }
+.recal-status {
+  margin-top: 12px; padding: 8px 12px; border-radius: 6px;
+  font-size: 12px; font-family: var(--mono); display: none;
+}
+.recal-status.ok   { background: var(--green-bg); color: var(--green); display: block; }
+.recal-status.err  { background: var(--red-bg);   color: var(--red);   display: block; }
+.recal-status.warn { background: var(--amber-bg); color: var(--amber); display: block; }
+.text-red   { color: var(--red); }
+.text-amber { color: var(--amber); }
+.text-muted { color: var(--muted); }
+</style>
+</head>
+<body>
+
+<div class="layout">
+
+<!-- ── topbar ── -->
+<div class="topbar">
+  <div class="tb-logo">
+    <div class="tb-dot" id="agent-pulse"></div>
+    <span class="tb-name">NIFTY IC AGENT</span>
+    <div class="tb-pills">
+      <span class="pill pill-paper">PAPER</span>
+      <span class="pill pill-live" id="agent-status-pill">SCANNING</span>
+    </div>
+  </div>
+  <div class="tb-right">
+    <span style="font-size:11px; color:var(--muted);">Expiry:</span>
+    <span id="tb-expiry" style="font-size:12px; font-family:var(--mono);">27-May-2026</span>
+    <span style="font-size:11px; color:var(--muted);">DTE:</span>
+    <span id="tb-dte" style="font-size:12px; font-family:var(--mono); color:var(--amber);">16</span>
+    <div class="conn-dot" id="conn-indicator" title="SSE connection"></div>
+    <span class="clock" id="clock-ist">--:--:-- IST</span>
+  </div>
+</div>
+
+<!-- ── main grid ── -->
+<div class="main">
+
+<!-- LEFT PANEL -->
+<div class="left">
+
+  <!-- market snapshot -->
+  <div class="card">
+    <div class="card-title"><i class="ti ti-activity"></i>Market snapshot</div>
+    <div class="metric-grid">
+      <div class="metric">
+        <div class="metric-label">Nifty spot</div>
+        <div class="metric-val" id="m-spot">–</div>
+        <div class="metric-sub" id="m-spot-chg">–</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">India VIX</div>
+        <div class="metric-val" id="m-vix" style="color:var(--amber)">–</div>
+        <div class="metric-sub" id="m-vix-zone">–</div>
+      </div>
+    </div>
+    <div style="margin-top:8px;">
+      <div style="font-size:10px; color:var(--muted); margin-bottom:4px;">VIX regime (0 → 50)</div>
+      <div class="vix-track"><div class="vix-marker" id="vix-marker" style="left:33%"></div></div>
+      <div style="display:flex; justify-content:space-between; font-size:9px; color:var(--muted);">
+        <span>SELL</span><span>CAUTION</span><span>SKIP&gt;30</span>
+      </div>
+    </div>
+    <div style="margin-top:10px; display:flex; flex-direction:column; gap:3px;">
+      <div class="kv"><span class="kv-k">Brent crude</span><span class="kv-v" id="m-crude">–</span></div>
+      <div class="kv"><span class="kv-k">Agent phase</span><span class="kv-v" id="m-phase">–</span></div>
+      <div class="kv"><span class="kv-k">Verdict</span><span class="kv-v" id="m-verdict">–</span></div>
+      <div class="kv"><span class="kv-k">Last scan</span><span class="kv-v" id="m-scan">–</span></div>
+    </div>
+  </div>
+
+  <!-- agent pipeline -->
+  <div class="card">
+    <div class="card-title"><i class="ti ti-route"></i>Agent pipeline</div>
+    <div class="pipeline" id="pipeline">
+      <div class="pl-step"><div class="pl-icon" id="ps-scan"><i class="ti ti-radar"></i></div><div class="pl-label">Scan</div></div>
+      <div class="pl-line" id="pl-1"></div>
+      <div class="pl-step"><div class="pl-icon" id="ps-vix"><i class="ti ti-chart-bar"></i></div><div class="pl-label">VIX</div></div>
+      <div class="pl-line" id="pl-2"></div>
+      <div class="pl-step"><div class="pl-icon" id="ps-range"><i class="ti ti-arrows-horizontal"></i></div><div class="pl-label">Range</div></div>
+      <div class="pl-line" id="pl-3"></div>
+      <div class="pl-step"><div class="pl-icon" id="ps-entry"><i class="ti ti-player-play"></i></div><div class="pl-label">Entry</div></div>
+      <div class="pl-line" id="pl-4"></div>
+      <div class="pl-step"><div class="pl-icon" id="ps-mon"><i class="ti ti-eye"></i></div><div class="pl-label">Monitor</div></div>
+      <div class="pl-line" id="pl-5"></div>
+      <div class="pl-step"><div class="pl-icon" id="ps-exit"><i class="ti ti-logout"></i></div><div class="pl-label">Exit</div></div>
+    </div>
+  </div>
+
+  <!-- subsystems -->
+  <div class="card">
+    <div class="card-title"><i class="ti ti-cpu"></i>Agent subsystems</div>
+    <div class="subsystem"><div class="ss-dot green"></div><span class="ss-label">Market scanner</span><span class="ss-val" id="ss-scanner">30s tick</span></div>
+    <div class="subsystem"><div class="ss-dot green"></div><span class="ss-label">VIX monitor</span><span class="ss-val" id="ss-vix">OK</span></div>
+    <div class="subsystem"><div class="ss-dot blue" id="ss-entry-dot"></div><span class="ss-label">Entry engine</span><span class="ss-val" id="ss-entry">Waiting</span></div>
+    <div class="subsystem"><div class="ss-dot amber" id="ss-pnl-dot"></div><span class="ss-label">P&L tracker</span><span class="ss-val" id="ss-pnl">Idle</span></div>
+    <div class="subsystem"><div class="ss-dot amber" id="ss-sl-dot"></div><span class="ss-label">Stop loss guard</span><span class="ss-val" id="ss-sl">Armed</span></div>
+    <div class="subsystem"><div class="ss-dot amber" id="ss-pt-dot"></div><span class="ss-label">Profit target</span><span class="ss-val" id="ss-pt">Watching</span></div>
+    <div class="subsystem"><div class="ss-dot green"></div><span class="ss-label">Event watchdog</span><span class="ss-val">VIX &gt; 22 armed</span></div>
+    <div class="subsystem"><div class="ss-dot green"></div><span class="ss-label">Daily re-scan</span><span class="ss-val">09:00 IST daily</span></div>
+  </div>
+
+  <!-- RECALIBRATE button — inside .left panel -->
+  <button class="recal-btn" id="recal-btn" onclick="openRecalModal()" title="Force agent to re-scan all parameters and re-check credit right now">
+    <i class="ti ti-refresh-alert" style="font-size:15px;"></i>
+    RE-CALIBRATE
+  </button>
+
+</div><!-- /.left -->
+
+<!-- CENTER PANEL -->
+<div class="center">
+
+  <!-- verdict -->
+  <div class="verdict verdict-go" id="verdict-banner">Agent initialising — connecting to live feed...</div>
+
+  <!-- pnl hero -->
+  <div class="card">
+    <div class="card-title"><i class="ti ti-trending-up"></i>Paper trade P&amp;L</div>
+    <div class="pnl-big" id="pnl-hero">+₹0</div>
+    <div class="metric-grid" style="margin-top:8px;">
+      <div class="metric"><div class="metric-label">Credit collected</div><div class="metric-val" id="pnl-credit">₹–</div></div>
+      <div class="metric"><div class="metric-label">Current premium</div><div class="metric-val" id="pnl-curr">₹–</div></div>
+      <div class="metric"><div class="metric-label">% of credit</div><div class="metric-val" id="pnl-pct">0%</div></div>
+      <div class="metric"><div class="metric-label">Theta today</div><div class="metric-val text-green" id="pnl-theta">+₹0</div></div>
+    </div>
+    <div class="metric-grid" style="margin-top:8px;">
+      <div class="metric"><div class="metric-label">Profit target</div><div class="metric-val text-green" id="pnl-target">₹–</div></div>
+      <div class="metric"><div class="metric-label">Stop loss level</div><div class="metric-val text-red" id="pnl-sl">₹–</div></div>
+      <div class="metric"><div class="metric-label">Peak P&L</div><div class="metric-val text-green" id="pnl-peak">₹–</div></div>
+      <div class="metric"><div class="metric-label">Entry spot</div><div class="metric-val" id="pnl-entry-spot">–</div></div>
+    </div>
+  </div>
+
+  <!-- P&L chart -->
+  <div class="card">
+    <div class="card-title"><i class="ti ti-chart-line"></i>P&amp;L over time (paper)</div>
+    <div class="chart-wrap" style="height:160px;">
+      <canvas id="pnlChart" role="img" aria-label="P&L over time line chart">P&L chart</canvas>
+    </div>
+  </div>
+
+  <!-- payoff graph -->
+  <div class="card">
+    <div class="card-title"><i class="ti ti-chart-area"></i>Live payoff graph</div>
+    <div style="display:flex; gap:16px; font-size:10px; color:var(--muted); margin-bottom:6px;">
+      <span><span style="display:inline-block;width:16px;height:2px;background:var(--green);vertical-align:middle;margin-right:4px;"></span>At expiry</span>
+      <span><span style="display:inline-block;width:16px;height:2px;border-top:2px dashed var(--blue);vertical-align:middle;margin-right:4px;"></span>Current value</span>
+      <span><span style="display:inline-block;width:16px;height:2px;background:var(--amber);opacity:0.6;vertical-align:middle;margin-right:4px;"></span>Spot</span>
+    </div>
+    <div class="chart-wrap" style="height:200px;">
+      <canvas id="payoffChart" role="img" aria-label="Iron condor payoff diagram">Payoff chart</canvas>
+    </div>
+    <div class="slider-row">
+      <label>Simulate spot</label>
+      <input type="range" id="spot-slider" min="21000" max="28000" value="24280" step="50">
+      <span id="slider-val">24,280</span>
+    </div>
+    <div style="margin-top:8px; display:flex; gap:8px;">
+      <div class="metric" style="flex:1;"><div class="metric-label">Profit zone</div><div class="metric-val" id="po-zone" style="font-size:13px;">–</div></div>
+      <div class="metric" style="flex:1;"><div class="metric-label">Spot P&L</div><div class="metric-val" id="po-pnl">–</div></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- RIGHT PANEL -->
+<div class="right">
+
+  <!-- trade setup -->
+  <div class="card">
+    <div class="card-title"><i class="ti ti-arrows-diff"></i>Iron condor — May 27</div>
+    <div class="spread-row">
+      <div class="spread spread-put">
+        <div class="spread-title">Bull put spread</div>
+        <div class="kv"><span class="kv-k">Sell</span><span class="kv-v" id="ts-ps">–</span></div>
+        <div class="kv"><span class="kv-k">Buy</span><span class="kv-v" id="ts-pl">–</span></div>
+        <div class="kv"><span class="kv-k">Credit</span><span class="kv-v text-green" id="ts-pc">–</span></div>
+        <div class="kv"><span class="kv-k">BE</span><span class="kv-v" id="ts-pbe">–</span></div>
+      </div>
+      <div class="spread spread-call">
+        <div class="spread-title">Bear call spread</div>
+        <div class="kv"><span class="kv-k">Sell</span><span class="kv-v" id="ts-cs">–</span></div>
+        <div class="kv"><span class="kv-k">Buy</span><span class="kv-v" id="ts-cl">–</span></div>
+        <div class="kv"><span class="kv-k">Credit</span><span class="kv-v text-green" id="ts-cc">–</span></div>
+        <div class="kv"><span class="kv-k">BE</span><span class="kv-v" id="ts-cbe">–</span></div>
+      </div>
+    </div>
+    <div style="margin-top:8px;">
+      <div class="kv"><span class="kv-k">Total credit</span><span class="kv-v text-green" id="ts-total">–</span></div>
+      <div class="kv"><span class="kv-k">Min credit</span><span class="kv-v" id="ts-min">₹5,000</span></div>
+      <div class="kv"><span class="kv-k">Min DTE</span><span class="kv-v" id="ts-min-dte">15 days</span></div>
+      <div class="kv"><span class="kv-k">Credit checked at</span><span class="kv-v" id="ts-checked-at">09:59 (pending)</span></div>
+      <div class="kv"><span class="kv-k">Spot at check</span><span class="kv-v" id="ts-spot-check">–</span></div>
+      <div class="kv"><span class="kv-k">VIX at check</span><span class="kv-v" id="ts-vix-check">–</span></div>
+      <div class="kv"><span class="kv-k">Width</span><span class="kv-v">300 pts each</span></div>
+      <div class="kv"><span class="kv-k">Lot size</span><span class="kv-v">50</span></div>
+    </div>
+  </div>
+
+  <!-- position status -->
+  <div class="card">
+    <div class="card-title"><i class="ti ti-checkup-list"></i>Position status</div>
+    <div class="kv"><span class="kv-k">Status</span><span class="kv-v" id="pos-status">Pre-entry</span></div>
+    <div class="kv"><span class="kv-k">Entry time</span><span class="kv-v" id="pos-entry-t">–</span></div>
+    <div class="kv"><span class="kv-k">Entry spot</span><span class="kv-v" id="pos-entry-spot">–</span></div>
+    <div class="kv"><span class="kv-k">Put prem (entry)</span><span class="kv-v" id="pos-pe">–</span></div>
+    <div class="kv"><span class="kv-k">Put prem (now)</span><span class="kv-v" id="pos-pn">–</span></div>
+    <div class="kv"><span class="kv-k">Call prem (entry)</span><span class="kv-v" id="pos-ce">–</span></div>
+    <div class="kv"><span class="kv-k">Call prem (now)</span><span class="kv-v" id="pos-cn">–</span></div>
+  </div>
+
+  <!-- rules card -->
+  <div class="card">
+    <div class="card-title"><i class="ti ti-shield-check"></i>Agent rules</div>
+    <div class="kv"><span class="kv-k">Entry window</span><span class="kv-v">10:00–11:30</span></div>
+    <div class="kv"><span class="kv-k">Profit exit</span><span class="kv-v">50% credit</span></div>
+    <div class="kv"><span class="kv-k">Stop loss</span><span class="kv-v">2× premium</span></div>
+    <div class="kv"><span class="kv-k">VIX skip</span><span class="kv-v">&gt; 30</span></div>
+    <div class="kv"><span class="kv-k">VIX stop</span><span class="kv-v">&gt; 22 intraday</span></div>
+    <div class="kv"><span class="kv-k">EOD close</span><span class="kv-v">15:15 expiry day</span></div>
+    <div class="kv"><span class="kv-k">Min credit</span><span class="kv-v text-amber">₹5,000</span></div>
+    <div class="kv"><span class="kv-k">Min DTE</span><span class="kv-v text-amber">15 days</span></div>
+    <div class="kv"><span class="kv-k">Geo-risk size</span><span class="kv-v">75% when crude &gt;$105</span></div>
+  </div>
+
+  <!-- live agent log -->
+  <div class="card" style="flex:1;">
+    <div class="card-title"><i class="ti ti-terminal-2"></i>Agent log — live</div>
+    <div class="log-wrap" id="agent-log">
+      <div class="log-entry"><span class="log-t">--:--:--</span><span class="log-msg">Connecting to agent...</span></div>
+    </div>
+  </div>
+
+</div>
+</div>
+</div>
+
+<script>
+var API = window.location.origin;
+
+var state = {};
+var pnlChart, payoffChart;
+var pnlLabels = [], pnlData = [];
+var sseConnected = false;
+
+function fmt(n) {
+  var v = Math.round(n);
+  return (v >= 0 ? '+₹' : '-₹') + Math.abs(v).toLocaleString('en-IN');
+}
+function fmtAbs(n) { return '₹' + Math.round(Math.abs(n)).toLocaleString('en-IN'); }
+function num(n) { return Math.round(n).toLocaleString('en-IN'); }
+
+// clock
+function updateClock() {
+  var now = new Date(Date.now() + 5.5*3600000);
+  document.getElementById('clock-ist').textContent =
+    now.toISOString().slice(11,19) + ' IST';
+}
+setInterval(updateClock, 1000); updateClock();
+
+// SSE connection
+function connectSSE() {
+  var es = new EventSource(API + '/api/stream');
+  es.onopen = function() {
+    sseConnected = true;
+    document.getElementById('conn-indicator').style.background = 'var(--green)';
+  };
+  es.onerror = function() {
+    sseConnected = false;
+    document.getElementById('conn-indicator').style.background = 'var(--red)';
+    setTimeout(connectSSE, 5000);
+    es.close();
+  };
+  es.onmessage = function(e) {
+    try { state = JSON.parse(e.data); render(state); }
+    catch(err) {}
+  };
+}
+
+// fallback: poll if SSE not available
+function pollState() {
+  fetch(API + '/api/state')
+    .then(r => r.json())
+    .then(s => { state = s; render(s); })
+    .catch(() => {});
+}
+
+function renderVerdict(s) {
+  var el = document.getElementById('verdict-banner');
+  var v  = (s.verdict || 'PENDING').toUpperCase();
+  var ph = (s.phase || '').toLowerCase();
+  var cls = 'verdict verdict-go';
+  var msg = '';
+
+  if (v === 'SKIP') {
+    cls = 'verdict verdict-stop';
+    msg = '⊘ AGENT SKIP — ' + (s.skip_reason || 'condition not met');
+  } else if (ph === 'scanning') {
+    cls = 'verdict verdict-wait';
+    msg = '🔍 SCANNING — 09:00 scan in progress. VIX and macro checks running.';
+  } else if (ph === 'credit_check_wait') {
+    cls = 'verdict verdict-wait';
+    msg = '⏳ WAITING — Strikes set. Credit check fires at 09:59 on settled premiums.';
+  } else if (ph === 'entry_wait') {
+    cls = 'verdict verdict-wait';
+    msg = '✓ CREDIT PASSED at 09:59 — Entry window open 10:00–11:30. Firing legs now.';
+  } else if (ph === 'active') {
+    var cr  = (s.credits || {}).total || 0;
+    var pnl = (s.pnl || {}).gross || 0;
+    cls = 'verdict verdict-go';
+    msg = '● ACTIVE — Iron condor live. P&L: ' + fmt(pnl) +
+          ' | Target: ' + fmtAbs(cr * 0.5) + ' | SL: -' + fmtAbs(cr * 2);
+  } else if (ph === 'exited') {
+    cls = 'verdict verdict-stop';
+    msg = '⊡ EXITED — Position closed. See P&L tab for final result.';
+  } else {
+    cls = 'verdict verdict-go';
+    msg = 'AGENT READY — Next scan: 09:00 IST | Expiry: ' + (s.expiry || '') +
+          ' | VIX: ' + (s.vix || '--');
+  }
+  el.className = cls;
+  el.textContent = msg;
+}
+
+function renderPipeline(s) {
+  var ph = s.phase || '';
+  var phaseStep = {
+    pre_market: -1, scanning: 0,
+    credit_check_wait: 2,
+    entry_wait: 3, active: 4, exited: 5
+  };
+  var step = phaseStep[ph] !== undefined ? phaseStep[ph] : -1;
+  var ids  = ['ps-scan','ps-vix','ps-range','ps-entry','ps-mon','ps-exit'];
+  var lids = ['pl-1','pl-2','pl-3','pl-4','pl-5'];
+  ids.forEach(function(id, i) {
+    var el = document.getElementById(id);
+    if(!el) return;
+    el.className = 'pl-icon';
+    if(i < step)        el.className += ' done';
+    else if(i === step) el.className += ' active';
+  });
+  lids.forEach(function(id, i) {
+    var el = document.getElementById(id);
+    if(!el) return;
+    el.className = 'pl-line' + (i < step ? ' done' : '');
+  });
+  var cr = s.credits || {};
+  var entryEl = document.getElementById('ps-entry');
+  if(entryEl && cr.checked_at) {
+    entryEl.title = 'Credit checked ' + cr.checked_at +
+      ' | Rs' + Math.round(cr.total||0).toLocaleString('en-IN') +
+      ' | Spot ' + (cr.spot_at_check||'') + ' | VIX ' + (cr.vix_at_check||'');
+  }
+}
+
+function renderSubsystems(s) {
+  var ph = s.phase || '';
+  var active = ph === 'active';
+  var vix    = s.vix || 0;
+
+  setEl('ss-scanner', 'Tick every 30s');
+  setEl('ss-vix', vix.toFixed(2) + (vix < 20 ? ' — SAFE' : vix < 30 ? ' — CAUTION' : ' — ALERT'));
+  document.getElementById('ss-vix').style.color = vix < 20 ? 'var(--green)' : vix < 30 ? 'var(--amber)' : 'var(--red)';
+
+  setEl('ss-entry', active ? 'FILLED' : ph === 'entry_wait' ? 'Window 10:00 open' : ph === 'credit_check_wait' ? 'Credit check 09:59' : 'Waiting for 09:59');
+  setEl('ss-pnl', active ? 'Live tracking' : 'Idle');
+  var credit = (s.credits || {}).total || 0;
+  setEl('ss-sl', active ? 'Armed @ ₹' + num(credit*2) : 'Pre-entry');
+  setEl('ss-pt', active ? 'Target: ₹' + num(credit*0.5) : 'Pre-entry');
+}
+
+function renderMarket(s) {
+  setEl('m-spot', num(s.spot||0));
+  setEl('m-vix',  (s.vix||0).toFixed(2));
+  setEl('m-crude', '$' + (s.crude_brent||0).toFixed(1));
+  setEl('m-phase', (s.phase||'–').replace('_',' '));
+  setEl('m-verdict', s.verdict || '–');
+  setEl('m-scan', s.scan_count ? 'Scan #' + s.scan_count : '–');
+
+  var vix = s.vix || 16;
+  var vixPct = Math.min(100, (vix / 50) * 100);
+  document.getElementById('vix-marker').style.left = vixPct + '%';
+
+  var zone = vix < 20 ? 'OPTIMAL — sell premium' : vix < 30 ? 'CAUTION — reduce size' : 'SKIP — no trade';
+  var zCol  = vix < 20 ? 'var(--green)' : vix < 30 ? 'var(--amber)' : 'var(--red)';
+  setEl('m-vix-zone', zone);
+  document.getElementById('m-vix-zone').style.color = zCol;
+  document.getElementById('m-vix').style.color = zCol;
+
+  setEl('tb-expiry', s.expiry || '–');
+  setEl('tb-dte', (s.dte || 0) + ' days');
+}
+
+function renderStrikes(s) {
+  var sk = s.strikes || {};
+  var cr = s.credits || {};
+  setEl('ts-ps', (sk.put_short||'–') + ' PE');
+  setEl('ts-pl', (sk.put_long||'–') + ' PE');
+  setEl('ts-cs', (sk.call_short||'–') + ' CE');
+  setEl('ts-cl', (sk.call_long||'–') + ' CE');
+  setEl('ts-pc', cr.put_leg  ? fmtAbs(cr.put_leg)  : '–');
+  setEl('ts-cc', cr.call_leg ? fmtAbs(cr.call_leg) : '–');
+  setEl('ts-total', cr.total ? fmtAbs(cr.total) : '–');
+  setEl('ts-checked-at', cr.checked_at ? cr.checked_at + ' IST' : '09:59 (pending)');
+  var rules = s.rules || {};
+  setEl('ts-min', rules.min_credit ? '\u20b9' + (rules.min_credit).toLocaleString('en-IN') : '\u20b95,000');
+  setEl('ts-min-dte', (rules.min_dte || 15) + ' days');
+  setEl('ts-spot-check', cr.spot_at_check ? num(cr.spot_at_check) : '–');
+  setEl('ts-vix-check',  cr.vix_at_check  ? cr.vix_at_check.toFixed(2) : '–');
+  var ps = sk.put_short || 0, pc = (cr.put_leg || 0) / 50;
+  var cs = sk.call_short || 0, cc = (cr.call_leg || 0) / 50;
+  setEl('ts-pbe', ps ? num(ps - pc) : '–');
+  setEl('ts-cbe', cs ? num(cs + cc) : '–');
+  setEl('po-zone', sk.put_short && sk.call_short
+    ? num(sk.put_short - pc) + ' – ' + num(cs + cc) : '–');
+}
+
+function renderPnl(s) {
+  var pnl = s.pnl || {};
+  var cr  = (s.credits || {}).total || 0;
+  var g   = pnl.gross || 0;
+  var hero = document.getElementById('pnl-hero');
+  hero.textContent = fmt(g);
+  hero.className   = 'pnl-big ' + (g >= 0 ? 'pos' : 'neg');
+  setEl('pnl-credit', cr ? fmtAbs(cr) : '–');
+  setEl('pnl-curr', cr ? fmtAbs(cr - g) : '–');
+  setEl('pnl-pct', cr ? (g/cr*100).toFixed(1)+'%' : '0%');
+  setEl('pnl-theta', pnl.theta_today ? '+₹'+num(pnl.theta_today) : '+₹0');
+  setEl('pnl-target', cr ? fmtAbs(cr*0.5) : '–');
+  setEl('pnl-sl', cr ? '-₹'+num(cr*2) : '–');
+  setEl('pnl-peak', pnl.peak ? fmt(pnl.peak) : '–');
+  var pos = s.position || {};
+  setEl('pnl-entry-spot', pos.entry_spot ? num(pos.entry_spot) : '–');
+
+  // track history
+  var t = (s.last_updated || '').slice(11,16) || '--:--';
+  if(!pnlLabels.length || pnlLabels[pnlLabels.length-1] !== t) {
+    pnlLabels.push(t); pnlData.push(Math.round(g));
+    if(pnlLabels.length > 80) { pnlLabels.shift(); pnlData.shift(); }
+    if(pnlChart) {
+      pnlChart.data.labels   = pnlLabels;
+      pnlChart.data.datasets[0].data = pnlData;
+      pnlChart.update('none');
+    }
+  }
+}
+
+function renderPosition(s) {
+  var pos = s.position || {};
+  var active = pos.active;
+  setEl('pos-status', active ? 'ACTIVE' : (s.phase==='exited'?'EXITED':'Pre-entry'));
+  document.getElementById('pos-status').style.color = active ? 'var(--green)' : 'var(--muted)';
+  setEl('pos-entry-t',    pos.entry_time || '–');
+  setEl('pos-entry-spot', pos.entry_spot ? num(pos.entry_spot) : '–');
+  setEl('pos-pe', pos.put_premium_entry    ? pos.put_premium_entry.toFixed(1) : '–');
+  setEl('pos-pn', pos.put_premium_current  ? pos.put_premium_current.toFixed(1) : '–');
+  setEl('pos-ce', pos.call_premium_entry   ? pos.call_premium_entry.toFixed(1) : '–');
+  setEl('pos-cn', pos.call_premium_current ? pos.call_premium_current.toFixed(1) : '–');
+}
+
+function renderLog(s) {
+  var logEl = document.getElementById('agent-log');
+  var entries = (s.log || []).slice(0, 60);
+  if(!entries.length) return;
+  var html = entries.map(function(e) {
+    return '<div class="log-entry"><span class="log-t">' + e.t + '</span>' +
+           '<span class="log-msg ' + (e.level||'info') + '">' + e.msg + '</span></div>';
+  }).join('');
+  logEl.innerHTML = html;
+}
+
+function render(s) {
+  renderVerdict(s);
+  renderPipeline(s);
+  renderSubsystems(s);
+  renderMarket(s);
+  renderStrikes(s);
+  renderPnl(s);
+  renderPosition(s);
+  renderLog(s);
+  buildPayoff(s);
+}
+
+function setEl(id, val) {
+  var el = document.getElementById(id);
+  if(el) el.textContent = val;
+}
+
+// ── P&L chart ──
+function initPnlChart() {
+  var ctx = document.getElementById('pnlChart').getContext('2d');
+  pnlChart = new Chart(ctx, {
+    type: 'line',
+    data: { labels: ['–'], datasets: [{
+      label: 'P&L', data: [0],
+      borderColor: '#10b981', borderWidth: 2, pointRadius: 0,
+      fill: { target: { value: 0 }, above: 'rgba(16,185,129,0.12)', below: 'rgba(239,68,68,0.10)' },
+      tension: 0.3
+    }]},
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { maxTicksLimit: 6, font:{size:9}, color:'#6b7280' }, grid:{display:false} },
+        y: { ticks: { font:{size:9}, color:'#6b7280', callback: v => '₹'+Math.round(v).toLocaleString('en-IN') },
+             grid: { color: 'rgba(255,255,255,0.04)' } }
+      }
+    }
+  });
+}
+
+// ── payoff chart ──
+function buildPayoff(s) {
+  s = s || state;
+  var sk = s.strikes || { put_short:23000, put_long:22700, call_short:25500, call_long:25800 };
+  var cr = (s.credits||{}).total || 8500;
+  var spot = s.spot || 24280;
+  var dte  = Math.max(0.1, s.dte || 1);
+  var vix  = s.vix || 17;
+  var width = 300;
+
+  var labels=[], expiry=[], current=[];
+  for(var p=21000; p<=28000; p+=200) {
+    labels.push(p.toLocaleString('en-IN'));
+    var ep;
+    if(p <= sk.put_long)   ep = -(width*50 - cr);
+    else if(p <= sk.put_short) ep = cr - (sk.put_short - p)*50;
+    else if(p <= sk.call_short) ep = cr;
+    else if(p <= sk.call_long)  ep = cr - (p - sk.call_short)*50;
+    else ep = -(width*50 - cr);
+    ep = Math.max(-18000, Math.min(ep, 12000));
+    expiry.push(Math.round(ep));
+    var tv = ep * 0.55 + cr * 0.45 * (dte/16);
+    current.push(Math.round(Math.max(-18000, Math.min(tv, 12000))));
+  }
+
+  var spotIdx = Math.round((spot - 21000) / 200);
+  spotIdx = Math.max(0, Math.min(spotIdx, labels.length-1));
+  var spotPnl = expiry[spotIdx] || 0;
+
+  var el = document.getElementById('po-pnl');
+  if(el) { el.textContent = fmt(spotPnl); el.className = 'metric-val ' + (spotPnl>=0?'text-green':'text-red'); }
+
+  if(payoffChart) {
+    payoffChart.data.labels = labels;
+    payoffChart.data.datasets[0].data = expiry;
+    payoffChart.data.datasets[1].data = current;
+    payoffChart.data.datasets[2].data = labels.map((_,i) => i===spotIdx ? expiry[i] : null);
+    payoffChart.update('none');
+    return;
+  }
+
+  var ctx2 = document.getElementById('payoffChart').getContext('2d');
+  payoffChart = new Chart(ctx2, {
+    type: 'line',
+    data: { labels, datasets: [
+      { label:'At expiry', data:expiry, borderColor:'#10b981', borderWidth:2, pointRadius:0,
+        fill:{target:{value:0},above:'rgba(16,185,129,0.12)',below:'rgba(239,68,68,0.10)'}, tension:0.15 },
+      { label:'Now', data:current, borderColor:'#3b82f6', borderWidth:1.5,
+        borderDash:[5,3], pointRadius:0, tension:0.2 },
+      { label:'Spot', data:labels.map((_,i)=>i===spotIdx?expiry[i]:null),
+        borderColor:'#f59e0b', borderWidth:0, pointRadius:5, pointBackgroundColor:'#f59e0b',
+        showLine:false }
+    ]},
+    options: {
+      responsive:true, maintainAspectRatio:false, animation:false,
+      plugins:{ legend:{display:false}, tooltip:{mode:'index',intersect:false,
+        callbacks:{ label: i => i.dataset.label+': ₹'+Math.round(i.parsed.y).toLocaleString('en-IN') }
+      }},
+      scales:{
+        x:{ ticks:{maxTicksLimit:8,font:{size:9},color:'#6b7280'}, grid:{color:'rgba(255,255,255,0.03)'} },
+        y:{ ticks:{font:{size:9},color:'#6b7280',callback:v=>'₹'+(v/1000).toFixed(0)+'k'},
+            grid:{color:'rgba(255,255,255,0.03)'}, min:-20000, max:14000 }
+      }
+    }
+  });
+}
+
+// slider
+document.getElementById('spot-slider').addEventListener('input', function() {
+  if(state.spot !== undefined) {
+    state.spot = parseInt(this.value);
+  }
+  document.getElementById('slider-val').textContent = parseInt(this.value).toLocaleString('en-IN');
+  buildPayoff(state);
+});
+
+// boot
+window.addEventListener('load', function() {
+  initPnlChart();
+  connectSSE();
+  // fallback poll every 5s if SSE drops
+  setInterval(function() { if(!sseConnected) pollState(); }, 5000);
+  // initial data
+  pollState();
+});
+
+// ── Recalibrate modal ─────────────────────────────────────────────────────
+
+function openRecalModal() {
+  // Pre-flight: check current phase
+  var ph = (state.phase || '').toLowerCase();
+  var statusEl = document.getElementById('recal-status');
+  statusEl.className = 'recal-status';
+  statusEl.textContent = '';
+
+  if (state.position && state.position.active) {
+    statusEl.className = 'recal-status warn';
+    statusEl.textContent = '⚠ Position already active — recalibration not allowed while in a live trade.';
+    document.getElementById('recal-overlay').classList.add('open');
+    document.getElementById('recal-confirm-btn').disabled = true;
+    return;
+  }
+  if (ph === 'exited') {
+    statusEl.className = 'recal-status warn';
+    statusEl.textContent = '⚠ Trade already exited today — recalibration not allowed.';
+    document.getElementById('recal-overlay').classList.add('open');
+    document.getElementById('recal-confirm-btn').disabled = true;
+    return;
+  }
+
+  // Reset step styles
+  ['rs-1','rs-2','rs-3','rs-4','rs-5'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if(el) el.className = 'recal-modal-step';
+  });
+  document.getElementById('recal-confirm-btn').disabled = false;
+  document.getElementById('recal-btns').style.display = 'flex';
+  document.getElementById('recal-overlay').classList.add('open');
+}
+
+function closeRecalModal() {
+  document.getElementById('recal-overlay').classList.remove('open');
+}
+
+// Close modal if user clicks outside
+document.getElementById('recal-overlay').addEventListener('click', function(e) {
+  if(e.target === this) closeRecalModal();
+});
+
+async function confirmRecalibrate() {
+  var btn       = document.getElementById('recal-confirm-btn');
+  var statusEl  = document.getElementById('recal-status');
+  var steps     = ['rs-1','rs-2','rs-3','rs-4','rs-5'];
+
+  btn.disabled = true;
+  btn.textContent = 'SENDING...';
+  document.getElementById('recal-btns').style.display = 'flex';
+
+  // Animate steps as "pending"
+  steps.forEach(function(id) {
+    var el = document.getElementById(id);
+    if(el) el.className = 'recal-modal-step active';
+  });
+
+  try {
+    var res  = await fetch(API + '/api/recalibrate', { method: 'POST' });
+    var data = await res.json();
+
+    if (res.ok && data.ok) {
+      // Animate steps completing one by one
+      var i = 0;
+      var interval = setInterval(function() {
+        if(i < steps.length) {
+          var el = document.getElementById(steps[i]);
+          if(el) el.className = 'recal-modal-step done';
+          i++;
+        } else {
+          clearInterval(interval);
+        }
+      }, 350);
+
+      statusEl.className   = 'recal-status ok';
+      statusEl.textContent = '✓ Command sent — agent will re-scan within 30 seconds. Watch the agent log for [RECAL] entries.';
+      btn.textContent      = 'SENT ✓';
+
+      // Update recal button to show pending state
+      var recalBtn = document.getElementById('recal-btn');
+      if(recalBtn) {
+        recalBtn.style.borderColor = 'var(--green)';
+        recalBtn.style.color       = 'var(--green)';
+        recalBtn.style.background  = 'var(--green-bg)';
+        recalBtn.innerHTML         = '<span class="recal-icon"><i class="ti ti-refresh"></i></span> RECALIBRATING...';
+        recalBtn.disabled = true;
+        // Reset after 60s
+        setTimeout(function() {
+          recalBtn.style.borderColor = '';
+          recalBtn.style.color       = '';
+          recalBtn.style.background  = '';
+          recalBtn.innerHTML = '<span class="recal-icon"><i class="ti ti-refresh-alert"></i></span> RE-CALIBRATE';
+          recalBtn.disabled = false;
+        }, 60000);
+      }
+
+      // Auto-close modal after 3s
+      setTimeout(closeRecalModal, 3000);
+
+    } else {
+      // Server returned a guard error (active position etc)
+      statusEl.className   = 'recal-status err';
+      statusEl.textContent = '✗ ' + (data.reason || 'Recalibration blocked by agent.');
+      steps.forEach(function(id) {
+        var el = document.getElementById(id);
+        if(el) el.className = 'recal-modal-step';
+      });
+      btn.disabled    = false;
+      btn.textContent = 'CONFIRM RECALIBRATE';
+    }
+
+  } catch(err) {
+    statusEl.className   = 'recal-status err';
+    statusEl.textContent = '✗ Network error — could not reach agent: ' + err.message;
+    steps.forEach(function(id) {
+      var el = document.getElementById(id);
+      if(el) el.className = 'recal-modal-step';
+    });
+    btn.disabled    = false;
+    btn.textContent = 'CONFIRM RECALIBRATE';
+  }
+}
+</script>
+<!-- ── Recalibrate modal ── -->
+<div class="recal-overlay" id="recal-overlay">
+  <div class="recal-modal">
+    <div class="recal-modal-title">
+      <i class="ti ti-refresh-alert"></i> MANUAL RECALIBRATION
+    </div>
+    <div class="recal-modal-body">
+      Forces the agent to re-run <strong>all checks right now</strong> using live market data — VIX, macro, range, strikes and credit — regardless of the scheduled 09:00 / 09:59 timers.<br><br>
+      Use this after 10:00 if you suspect the agent missed a check, or after a large intraday move you want to re-assess from scratch.
+    </div>
+    <div class="recal-modal-steps" id="recal-steps">
+      <div class="recal-modal-step" id="rs-1">&#9312; Re-run VIX check &amp; macro scan on live data</div>
+      <div class="recal-modal-step" id="rs-2">&#9313; Recalculate expected range &amp; reselect strikes</div>
+      <div class="recal-modal-step" id="rs-3">&#9314; Re-price all 4 legs on current live premiums</div>
+      <div class="recal-modal-step" id="rs-4">&#9315; Verify combined credit &ge; &#8377;5,000 &amp; DTE &ge; 15</div>
+      <div class="recal-modal-step" id="rs-5">&#9316; Open entry window immediately if all checks pass</div>
+    </div>
+    <div class="recal-status" id="recal-status"></div>
+    <div class="recal-modal-btns" id="recal-btns">
+      <button class="recal-confirm-btn" id="recal-confirm-btn" onclick="confirmRecalibrate()">CONFIRM RECALIBRATE</button>
+      <button class="recal-cancel-btn" onclick="closeRecalModal()">CANCEL</button>
+    </div>
+  </div>
+</div>
+</body>
+</html>
